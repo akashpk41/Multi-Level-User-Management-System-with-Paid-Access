@@ -90,35 +90,38 @@ A secure, scalable, and role-based access control system built using the MERN st
 
 ---
 
-## 📁 Folder Structure
+## 📁 Folder Structure (Tabular View)
 
-backend/
-├── controllers/
-│ ├── authController.js ← Login, Logout, Refresh
-│ ├── userController.js ← User management ✅
-│ ├── subAdminController.js ← (to be implemented)
-│ ├── mainAdminController.js ← (to be implemented)
-│ └── logsController.js ← (to be implemented)
-├── middleware/
-│ ├── auth.js ← JWT verification
-│ ├── role.js ← Role-based access
-│ └── rateLimiter.js ← Rate limiting
-├── models/
-│ ├── User.js ← User model ✅
-│ ├── SubAdmin.js ← SubAdmin model ✅
-│ ├── MainAdmin.js ← MainAdmin model ✅
-│ ├── ActivityLog.js ← Logs model ✅
-│ └── index.js ← Model export
-├── routes/
-│ ├── authRoutes.js ← (to be implemented)
-│ ├── userRoutes.js ← (to be implemented)
-│ ├── adminRoutes.js ← (to be implemented)
-├── utils/
-│ ├── generateTokens.js ← Access + Refresh
-│ └── dateUtil.js ← Expiry calculations
-├── .env ← Env variables ✅
-├── package.json ← Dependencies ✅
-└── server.js ← Entry point ✅
+| 📂 Folder / File                 | 📄 Description                     | ✅ Status              |
+|----------------------------------|-------------------------------------|------------------------|
+| `backend/`                       | Root backend folder                | ✅                    |
+| ├── `controllers/`              | Request logic handlers             | ✅                    |
+| │   ├── `authController.js`     | Login, Logout, Refresh             | ✅ Implemented         |
+| │   ├── `userController.js`     | User management                    | ✅ Implemented         |
+| │   ├── `subAdminController.js` | Sub-admin operations               | ⏳ To be implemented   |
+| │   ├── `mainAdminController.js`| Main admin dashboard               | ⏳ To be implemented   |
+| │   └── `logsController.js`     | Logs & activities                  | ⏳ To be implemented   |
+| ├── `middleware/`               | Middlewares                        | ✅                    |
+| │   ├── `auth.js`               | JWT verification                   | ✅ Implemented         |
+| │   ├── `role.js`               | Role-based access control          | ✅ Implemented         |
+| │   └── `rateLimiter.js`        | Request throttling                 | ✅ Implemented         |
+| ├── `models/`                   | Database models                    | ✅                    |
+| │   ├── `User.js`               | User schema                        | ✅ Implemented         |
+| │   ├── `SubAdmin.js`           | Sub-admin schema                   | ✅ Implemented         |
+| │   ├── `MainAdmin.js`          | Main-admin schema                  | ✅ Implemented         |
+| │   ├── `ActivityLog.js`        | Logs schema                        | ✅ Implemented         |
+| │   └── `index.js`              | Export all models                  | ✅ Implemented         |
+| ├── `routes/`                   | API route definitions              | ⚠️ Partially Done      |
+| │   ├── `authRoutes.js`         | Auth related routes                | ⏳ To be implemented   |
+| │   ├── `userRoutes.js`         | User-related routes                | ⏳ To be implemented   |
+| │   └── `adminRoutes.js`        | Admin related routes               | ⏳ To be implemented   |
+| ├── `utils/`                    | Helper functions                   | ✅                    |
+| │   ├── `generateTokens.js`     | Create Access/Refresh Tokens       | ✅ Implemented         |
+| │   └── `dateUtil.js`           | Date calculations, expiry          | ✅ Implemented         |
+| ├── `.env`                      | Environment config file            | ✅ Present             |
+| ├── `package.json`              | NPM dependencies                   | ✅ Present             |
+| └── `server.js`                 | App entry point                    | ✅ Ready               |
+
 
 ---
 
