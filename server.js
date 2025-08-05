@@ -58,11 +58,12 @@ const connectDB = async () => {
 
 // Connect to Database
 connectDB();
-require('./models')
-// Routes (এখনো import করব নি, পরে করব)
-// app.use('/api/auth', require('./routes/authRoutes'));
-// app.use('/api/users', require('./routes/userRoutes'));
-// app.use('/api/admin', require('./routes/adminRoutes'));
+
+// Import routes
+const apiRoutes = require('./routes');
+
+// API Routes
+app.use('/api', apiRoutes);
 
 // Test Route
 app.get('/api/test', (req, res) => {
