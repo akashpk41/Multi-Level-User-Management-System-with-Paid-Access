@@ -5,68 +5,94 @@ const router = express.Router();
 const authController = require('../controllers/authController');
 
 // Import middleware
-const {
-    auth,
-    deviceLock,
-    limiters,
-    authenticateAndVerifyDevice,
-    adminAuth
-} = require('../middleware');
+const { auth, deviceLock, limiters } = require('../middleware');
 
-// Login Routes
-router.post('/login/user',
-    deviceLock.extractDeviceId,
+// Public routes (no authentication required)
+
+// User login (code-based)
+router.post('/user/login',
     limiters.loginLimiter,
+    deviceLock.extractDeviceId,
     authController.userLogin
 );
 
-router.post('/login/subadmin',
-    deviceLock.extractDeviceId,
+// SubAdmin login
+router.post('/subadmin/login',
     limiters.loginLimiter,
+    deviceLock.extractDeviceId,
     authController.subAdminLogin
 );
 
-router.post('/login/mainadmin',
-    deviceLock.extractDeviceId,
+// MainAdmin login
+router.post('/mainadmin/login',
     limiters.loginLimiter,
+    deviceLock.extractDeviceId,
     authController.mainAdminLogin
 );
 
-// Logout Routes
-router.post('/logout',
-    authenticateAndVerifyDevice,
-    authController.logout
-);
-
-router.post('/logout-all-devices',
-    authenticateAndVerifyDevice,
-    authController.logoutAllDevices
-);
-
-// Token Management
-router.post('/refresh-token',
+// Refresh token (uses refresh token middleware)
+router.post('/refresh',
+    limiters.authLimiter,
     deviceLock.extractDeviceId,
     auth.verifyRefreshToken,
     authController.refreshToken
 );
 
-// User Information
-router.get('/me',
-    authenticateAndVerifyDevice,
+// Protected routes (authentication required)
+
+// Get current user profile
+router.get('/profile',
     limiters.generalLimiter,
-    authController.getCurrentUser
+    deviceLock.extractDeviceId,
+    auth.verifyToken,
+    deviceLock.checkSingleDeviceLock,
+    deviceLock.checkMultiDeviceLock,
+    auth.verifyDevice,
+    authController.getProfile
 );
 
-router.get('/check-status',
-    authenticateAndVerifyDevice,
-    authController.checkAuthStatus
+// Verify current session
+router.get('/verify',
+    limiters.generalLimiter,
+    deviceLock.extractDeviceId,
+    auth.verifyToken,
+    deviceLock.checkSingleDeviceLock,
+    deviceLock.checkMultiDeviceLock,
+    auth.verifyDevice,
+    authController.verifySession
 );
 
-// Admin Actions
-router.post('/force-logout',
-    adminAuth,
+// Logout from current device
+router.post('/logout',
     limiters.generalLimiter,
-    authController.forceLogout
+    deviceLock.extractDeviceId,
+    auth.verifyToken,
+    deviceLock.checkSingleDeviceLock,
+    deviceLock.checkMultiDeviceLock,
+    auth.verifyDevice,
+    authController.logout
+);
+
+// Logout from all devices (MainAdmin only)
+router.post('/logout/all',
+    limiters.generalLimiter,
+    deviceLock.extractDeviceId,
+    auth.verifyToken,
+    deviceLock.checkSingleDeviceLock,
+    deviceLock.checkMultiDeviceLock,
+    auth.verifyDevice,
+    authController.logoutAllDevices
+);
+
+// Change password (SubAdmin and MainAdmin only)
+router.post('/change-password',
+    limiters.passwordChangeLimiter,
+    deviceLock.extractDeviceId,
+    auth.verifyToken,
+    deviceLock.checkSingleDeviceLock,
+    deviceLock.checkMultiDeviceLock,
+    auth.verifyDevice,
+    authController.changePassword
 );
 
 // Health check for auth service
@@ -74,7 +100,7 @@ router.get('/health', (req, res) => {
     res.json({
         success: true,
         service: 'Authentication Service',
-        status: 'Running',
+        status: 'healthy',
         timestamp: new Date().toISOString()
     });
 });

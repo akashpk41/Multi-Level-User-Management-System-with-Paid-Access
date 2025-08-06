@@ -81,7 +81,7 @@ const subAdminSchema = new mongoose.Schema({
     },
     autoLogoutReason: {
         type: String,
-        enum: ['expired', 'payment_expired', 'main_admin_action', 'device_change'],
+        enum: ['expired', 'payment_expired', 'main_admin_action', 'device_change', null],
         default: null
     },
     // Created by main admin

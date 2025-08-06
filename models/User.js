@@ -58,7 +58,7 @@ const userSchema = new mongoose.Schema({
     },
     autoLogoutReason: {
         type: String,
-        enum: ['expired', 'sub_admin_deleted', 'device_change', 'manual'],
+        enum: ['expired', 'sub_admin_deleted', 'device_change', 'manual', null],
         default: null
     }
 }, {

@@ -1,3 +1,12 @@
+const { User, SubAdmin, MainAdmin, ActivityLog } = require('../models');
+const {
+    generateTokensByRole,
+    setTokenCookies,
+    clearTokenCookies,
+    createLoginResponse,
+    generateDeviceFingerprint
+} = require('../utils/generateTokens');
+
 // Helper function to get device name
 const getDeviceName = (userAgent) => {
     if (!userAgent) return 'Unknown Device';
@@ -15,389 +24,6 @@ const getDeviceName = (userAgent) => {
 
     return 'Desktop Computer';
 };
-
-// Logout (All roles)
-const logout = async (req, res) => {
-    try {
-        const { user, userRole, deviceId } = req;
-
-        if (userRole === 'mainadmin') {
-            // Remove specific device from main admin
-            const deviceIndex = user.devices.findIndex(d => d.deviceId === deviceId);
-            if (deviceIndex !== -1) {
-                user.devices.splice(deviceIndex, 1);
-            }
-        } else {
-            // Clear device for user/subadmin
-            user.deviceId = null;
-            user.refreshToken = null;
-        }
-
-        await user.save();
-
-        // Clear cookies
-        clearTokenCookies(res);
-
-        // Log logout
-        await ActivityLog.logAuth({
-            userId: user._id,
-            userModel: userRole === 'user' ? 'User' : userRole === 'subadmin' ? 'SubAdmin' : 'MainAdmin',
-            userName: user.name,
-            username: user.username || user.code,
-            action: 'logout',
-            description: 'User logged out successfully',
-            ip: req.ip,
-            userAgent: req.get('User-Agent'),
-            deviceId: deviceId,
-            status: 'success',
-            severity: 'low'
-        });
-
-        res.json({
-            success: true,
-            message: 'Logged out successfully'
-        });
-    } catch (error) {
-        console.error('Logout error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Logout failed'
-        });
-    }
-};
-
-// Logout from all devices (Main Admin only)
-const logoutAllDevices = async (req, res) => {
-    try {
-        const { user, userRole } = req;
-
-        if (userRole !== 'mainadmin') {
-            return res.status(403).json({
-                success: false,
-                message: 'Only main admin can logout from all devices'
-            });
-        }
-
-        // Clear all devices
-        user.devices = [];
-        await user.save();
-
-        // Clear cookies
-        clearTokenCookies(res);
-
-        // Log logout all
-        await ActivityLog.logAuth({
-            userId: user._id,
-            userModel: 'MainAdmin',
-            userName: user.name,
-            username: user.username,
-            action: 'logout_all_devices',
-            description: 'Main admin logged out from all devices',
-            ip: req.ip,
-            userAgent: req.get('User-Agent'),
-            status: 'success',
-            severity: 'medium'
-        });
-
-        res.json({
-            success: true,
-            message: 'Logged out from all devices successfully'
-        });
-    } catch (error) {
-        console.error('Logout all devices error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Logout from all devices failed'
-        });
-    }
-};
-
-// Refresh Token
-const refreshToken = async (req, res) => {
-    try {
-        const { user, userRole, deviceId, refreshToken: currentRefreshToken } = req;
-
-        // Generate new tokens
-        const tokens = generateTokensByRole(user, userRole, deviceId);
-
-        // Update refresh token in database
-        if (userRole === 'mainadmin') {
-            const deviceIndex = user.devices.findIndex(d => d.deviceId === deviceId);
-            if (deviceIndex !== -1) {
-                user.devices[deviceIndex].refreshToken = tokens.refreshToken;
-                user.devices[deviceIndex].lastActive = new Date();
-            }
-        } else {
-            user.refreshToken = tokens.refreshToken;
-        }
-
-        await user.save();
-
-        // Set new cookies
-        setTokenCookies(res, tokens);
-
-        // Log token refresh
-        await ActivityLog.logAuth({
-            userId: user._id,
-            userModel: userRole === 'user' ? 'User' : userRole === 'subadmin' ? 'SubAdmin' : 'MainAdmin',
-            userName: user.name,
-            username: user.username || user.code,
-            action: 'token_refresh',
-            description: 'Access token refreshed successfully',
-            ip: req.ip,
-            userAgent: req.get('User-Agent'),
-            deviceId: deviceId,
-            status: 'success',
-            severity: 'low'
-        });
-
-        res.json({
-            success: true,
-            message: 'Token refreshed successfully',
-            tokens: {
-                accessToken: tokens.accessToken,
-                expiresIn: process.env.JWT_ACCESS_EXPIRE || '15m'
-            }
-        });
-    } catch (error) {
-        console.error('Token refresh error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Token refresh failed'
-        });
-    }
-};
-
-// Get current user info
-const getCurrentUser = async (req, res) => {
-    try {
-        const { user, userRole } = req;
-
-        let userInfo;
-
-        switch (userRole) {
-            case 'user':
-                userInfo = {
-                    id: user._id,
-                    name: user.name,
-                    code: user.code,
-                    package: user.package,
-                    packageExpiry: user.packageExpiry,
-                    remainingTime: user.remainingTime,
-                    isExpired: user.isExpired,
-                    lastLogin: user.lastLogin,
-                    loginCount: user.loginCount,
-                    subAdmin: user.subAdmin
-                };
-                break;
-
-            case 'subadmin':
-                userInfo = {
-                    id: user._id,
-                    name: user.name,
-                    username: user.username,
-                    email: user.email,
-                    phone: user.phone,
-                    isPaid: user.isPaid,
-                    paymentExpiry: user.paymentExpiry,
-                    remainingPaymentTime: user.remainingPaymentTime,
-                    isActive: user.isActive,
-                    totalUsersAdded: user.totalUsersAdded,
-                    activeUsers: user.activeUsers,
-                    lastLogin: user.lastLogin,
-                    loginCount: user.loginCount
-                };
-                break;
-
-            case 'mainadmin':
-                userInfo = {
-                    id: user._id,
-                    name: user.name,
-                    username: user.username,
-                    email: user.email,
-                    crashValue: user.crashValue,
-                    totalSubAdmins: user.totalSubAdmins,
-                    totalUsers: user.totalUsers,
-                    maxDevices: user.maxDevices,
-                    devicesCount: user.devices ? user.devices.length : 0,
-                    lastLogin: user.lastLogin,
-                    loginCount: user.loginCount,
-                    devices: user.devices.map(device => ({
-                        deviceId: device.deviceId.substring(0, 8) + '...',
-                        deviceName: device.deviceName,
-                        lastActive: device.lastActive,
-                        ip: device.ip
-                    }))
-                };
-                break;
-        }
-
-        res.json({
-            success: true,
-            user: userInfo,
-            role: userRole
-        });
-    } catch (error) {
-        console.error('Get current user error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to get user information'
-        });
-    }
-};
-
-// Check authentication status
-const checkAuthStatus = async (req, res) => {
-    try {
-        const { user, userRole } = req;
-
-        let isValid = true;
-        let message = 'Authentication valid';
-
-        // Additional checks based on role
-        if (userRole === 'user' && user.isExpired) {
-            isValid = false;
-            message = 'Package expired';
-        } else if (userRole === 'subadmin' && !user.canAccess) {
-            isValid = false;
-            message = 'Subscription expired or account inactive';
-        } else if (userRole === 'mainadmin' && !user.isActive) {
-            isValid = false;
-            message = 'Account inactive';
-        }
-
-        res.json({
-            success: true,
-            authenticated: true,
-            valid: isValid,
-            message: message,
-            role: userRole,
-            userId: user._id
-        });
-    } catch (error) {
-        console.error('Check auth status error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Authentication check failed'
-        });
-    }
-};
-
-// Force logout user (Admin action)
-const forceLogout = async (req, res) => {
-    try {
-        const { targetUserId, reason } = req.body;
-        const { user: adminUser, userRole: adminRole } = req;
-
-        if (adminRole !== 'mainadmin' && adminRole !== 'subadmin') {
-            return res.status(403).json({
-                success: false,
-                message: 'Only admins can force logout users'
-            });
-        }
-
-        // Find target user
-        let targetUser;
-        let targetModel;
-
-        // Try to find in different models
-        targetUser = await User.findById(targetUserId);
-        if (targetUser) {
-            targetModel = 'User';
-        } else {
-            targetUser = await SubAdmin.findById(targetUserId);
-            if (targetUser) {
-                targetModel = 'SubAdmin';
-
-                // Only main admin can force logout sub-admin
-                if (adminRole !== 'mainadmin') {
-                    return res.status(403).json({
-                        success: false,
-                        message: 'Only main admin can force logout sub-admins'
-                    });
-                }
-            }
-        }
-
-        if (!targetUser) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-
-        // Check if sub-admin can manage this user
-        if (adminRole === 'subadmin' && targetModel === 'User') {
-            if (targetUser.subAdmin.toString() !== adminUser._id.toString()) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'You can only manage your own users'
-                });
-            }
-        }
-
-        // Force logout
-        if (targetModel === 'SubAdmin' && targetUser.devices) {
-            targetUser.devices = [];
-        } else {
-            targetUser.deviceId = null;
-            targetUser.refreshToken = null;
-        }
-
-        targetUser.isAutoLoggedOut = true;
-        targetUser.autoLogoutReason = 'admin_action';
-
-        await targetUser.save();
-
-        // Log force logout action
-        await ActivityLog.logUserManagement({
-            adminId: adminUser._id,
-            adminModel: adminRole === 'mainadmin' ? 'MainAdmin' : 'SubAdmin',
-            adminName: adminUser.name,
-            adminUsername: adminUser.username,
-            targetId: targetUser._id,
-            targetModel: targetModel,
-            targetName: targetUser.name,
-            targetIdentifier: targetUser.username || targetUser.code,
-            action: 'force_logout',
-            description: `Force logout: ${reason || 'No reason provided'}`,
-            metadata: { reason },
-            ip: req.ip,
-            userAgent: req.get('User-Agent')
-        });
-
-        res.json({
-            success: true,
-            message: 'User logged out successfully'
-        });
-    } catch (error) {
-        console.error('Force logout error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Force logout failed'
-        });
-    }
-};
-
-module.exports = {
-    userLogin,
-    subAdminLogin,
-    mainAdminLogin,
-    logout,
-    logoutAllDevices,
-    refreshToken,
-    getCurrentUser,
-    checkAuthStatus,
-    forceLogout
-};
-            const { User, SubAdmin, MainAdmin, ActivityLog } = require('../models');
-const {
-    generateTokensByRole,
-    setTokenCookies,
-    clearTokenCookies,
-    createLoginResponse,
-    generateDeviceFingerprint
-} = require('../utils/generateTokens');
 
 // User Login (Code-based)
 const userLogin = async (req, res) => {
@@ -834,26 +460,378 @@ const mainAdminLogin = async (req, res) => {
     }
 };
 
-// Helper function to get device name
-const getDeviceName = (userAgent) => {
-    if (!userAgent) return 'Unknown Device';
+// Logout (All roles)
+const logout = async (req, res) => {
+    try {
+        const { user, userRole, deviceId } = req;
 
-    const ua = userAgent.toLowerCase();
+        if (userRole === 'mainadmin') {
+            // Remove specific device from main admin
+            const deviceIndex = user.devices.findIndex(d => d.deviceId === deviceId);
+            if (deviceIndex !== -1) {
+                user.devices.splice(deviceIndex, 1);
+            }
+        } else {
+            // Clear device for user/subadmin
+            user.deviceId = null;
+            user.refreshToken = null;
+        }
 
-    if (ua.includes('android')) return 'Android Device';
-    if (ua.includes('iphone')) return 'iPhone';
-    if (ua.includes('ipad')) return 'iPad';
-    if (ua.includes('mobile')) return 'Mobile Device';
-    if (ua.includes('chrome')) return 'Chrome Browser';
-    if (ua.includes('firefox')) return 'Firefox Browser';
-    if (ua.includes('safari') && !ua.includes('chrome')) return 'Safari Browser';
-    if (ua.includes('edge')) return 'Edge Browser';
+        await user.save();
 
-    return 'Desktop Computer';
+        // Clear cookies
+        clearTokenCookies(res);
+
+        // Log logout
+        await ActivityLog.logAuth({
+            userId: user._id,
+            userModel: userRole === 'user' ? 'User' : userRole === 'subadmin' ? 'SubAdmin' : 'MainAdmin',
+            userName: user.name,
+            username: user.username || user.code,
+            action: 'logout',
+            description: 'User logged out successfully',
+            ip: req.ip,
+            userAgent: req.get('User-Agent'),
+            deviceId: deviceId,
+            status: 'success',
+            severity: 'low'
+        });
+
+        res.json({
+            success: true,
+            message: 'Logged out successfully'
+        });
+    } catch (error) {
+        console.error('Logout error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Logout failed'
+        });
+    }
+};
+
+// Logout from all devices (Main Admin only)
+const logoutAllDevices = async (req, res) => {
+    try {
+        const { user, userRole } = req;
+
+        if (userRole !== 'mainadmin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only main admin can logout from all devices'
+            });
+        }
+
+        // Clear all devices
+        user.devices = [];
+        await user.save();
+
+        // Clear cookies
+        clearTokenCookies(res);
+
+        // Log logout all
+        await ActivityLog.logAuth({
+            userId: user._id,
+            userModel: 'MainAdmin',
+            userName: user.name,
+            username: user.username,
+            action: 'logout_all_devices',
+            description: 'Main admin logged out from all devices',
+            ip: req.ip,
+            userAgent: req.get('User-Agent'),
+            status: 'success',
+            severity: 'medium'
+        });
+
+        res.json({
+            success: true,
+            message: 'Logged out from all devices successfully'
+        });
+    } catch (error) {
+        console.error('Logout all devices error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Logout from all devices failed'
+        });
+    }
+};
+
+// Refresh Token
+const refreshToken = async (req, res) => {
+    try {
+        const { user, userRole, deviceId, refreshToken: currentRefreshToken } = req;
+
+        // Generate new tokens
+        const tokens = generateTokensByRole(user, userRole, deviceId);
+
+        // Update refresh token in database
+        if (userRole === 'mainadmin') {
+            const deviceIndex = user.devices.findIndex(d => d.deviceId === deviceId);
+            if (deviceIndex !== -1) {
+                user.devices[deviceIndex].refreshToken = tokens.refreshToken;
+                user.devices[deviceIndex].lastActive = new Date();
+            }
+        } else {
+            user.refreshToken = tokens.refreshToken;
+        }
+
+        await user.save();
+
+        // Set new cookies
+        setTokenCookies(res, tokens);
+
+        // Log token refresh
+        await ActivityLog.logAuth({
+            userId: user._id,
+            userModel: userRole === 'user' ? 'User' : userRole === 'subadmin' ? 'SubAdmin' : 'MainAdmin',
+            userName: user.name,
+            username: user.username || user.code,
+            action: 'token_refresh',
+            description: 'Access token refreshed successfully',
+            ip: req.ip,
+            userAgent: req.get('User-Agent'),
+            deviceId: deviceId,
+            status: 'success',
+            severity: 'low'
+        });
+
+        res.json({
+            success: true,
+            message: 'Token refreshed successfully',
+            tokens: {
+                accessToken: tokens.accessToken,
+                expiresIn: process.env.JWT_ACCESS_EXPIRE || '15m'
+            }
+        });
+    } catch (error) {
+        console.error('Token refresh error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Token refresh failed'
+        });
+    }
+};
+
+// Get current user profile
+const getProfile = async (req, res) => {
+    try {
+        const { user, userRole } = req;
+
+        let userProfile;
+
+        switch (userRole) {
+            case 'user':
+                await user.populate('subAdmin', 'name username');
+                userProfile = {
+                    id: user._id,
+                    name: user.name,
+                    code: user.code,
+                    package: user.package,
+                    packageExpiry: user.packageExpiry,
+                    remainingTime: user.remainingTime,
+                    isExpired: user.isExpired,
+                    lastLogin: user.lastLogin,
+                    loginCount: user.loginCount,
+                    subAdmin: user.subAdmin
+                };
+                break;
+
+            case 'subadmin':
+                userProfile = {
+                    id: user._id,
+                    name: user.name,
+                    username: user.username,
+                    email: user.email,
+                    phone: user.phone,
+                    isPaid: user.isPaid,
+                    paymentExpiry: user.paymentExpiry,
+                    remainingPaymentTime: user.remainingPaymentTime,
+                    isActive: user.isActive,
+                    totalUsersAdded: user.totalUsersAdded,
+                    activeUsers: user.activeUsers,
+                    lastLogin: user.lastLogin,
+                    loginCount: user.loginCount
+                };
+                break;
+
+            case 'mainadmin':
+                userProfile = {
+                    id: user._id,
+                    name: user.name,
+                    username: user.username,
+                    email: user.email,
+                    crashValue: user.crashValue,
+                    totalSubAdmins: user.totalSubAdmins,
+                    totalUsers: user.totalUsers,
+                    maxDevices: user.maxDevices,
+                    devicesCount: user.devices ? user.devices.length : 0,
+                    lastLogin: user.lastLogin,
+                    loginCount: user.loginCount,
+                    devices: user.devices ? user.devices.map(device => ({
+                        deviceId: device.deviceId.substring(0, 8) + '...',
+                        deviceName: device.deviceName,
+                        lastActive: device.lastActive,
+                        ip: device.ip
+                    })) : []
+                };
+                break;
+        }
+
+        res.json({
+            success: true,
+            user: userProfile,
+            role: userRole
+        });
+    } catch (error) {
+        console.error('Get profile error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get profile'
+        });
+    }
+};
+
+// Verify current session
+const verifySession = async (req, res) => {
+    try {
+        const { user, userRole, deviceId } = req;
+
+        // Check if user is still valid
+        let isValid = true;
+        let message = 'Session is valid';
+
+        if (userRole === 'user') {
+            if (user.isExpired) {
+                isValid = false;
+                message = 'Package expired';
+            } else if (!user.isActive) {
+                isValid = false;
+                message = 'User inactive';
+            }
+        } else if (userRole === 'subadmin') {
+            if (!user.canAccess) {
+                isValid = false;
+                message = 'Sub-admin account expired or inactive';
+            }
+        } else if (userRole === 'mainadmin') {
+            if (!user.isActive) {
+                isValid = false;
+                message = 'Main admin account inactive';
+            }
+        }
+
+        res.json({
+            success: true,
+            valid: isValid,
+            message: message,
+            user: {
+                id: user._id,
+                name: user.name,
+                role: userRole
+            },
+            deviceId: deviceId.substring(0, 8) + '...'
+        });
+    } catch (error) {
+        console.error('Verify session error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Session verification failed'
+        });
+    }
+};
+
+// Change password (SubAdmin and MainAdmin only)
+const changePassword = async (req, res) => {
+    try {
+        const { user, userRole } = req;
+        const { currentPassword, newPassword } = req.body;
+
+        if (userRole === 'user') {
+            return res.status(403).json({
+                success: false,
+                message: 'Users cannot change password'
+            });
+        }
+
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'Current password and new password are required'
+            });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: 'New password must be at least 6 characters long'
+            });
+        }
+
+        // Verify current password
+        const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+
+        if (!isCurrentPasswordValid) {
+            // Log failed password change attempt
+            await ActivityLog.logAuth({
+                userId: user._id,
+                userModel: userRole === 'subadmin' ? 'SubAdmin' : 'MainAdmin',
+                userName: user.name,
+                username: user.username,
+                action: 'password_change_failed',
+                description: 'Failed password change attempt with invalid current password',
+                ip: req.ip,
+                userAgent: req.get('User-Agent'),
+                deviceId: req.deviceId,
+                status: 'failed',
+                severity: 'high'
+            });
+
+            return res.status(401).json({
+                success: false,
+                message: 'Current password is incorrect'
+            });
+        }
+
+        // Update password
+        user.password = newPassword;
+        await user.save();
+
+        // Log successful password change
+        await ActivityLog.logAuth({
+            userId: user._id,
+            userModel: userRole === 'subadmin' ? 'SubAdmin' : 'MainAdmin',
+            userName: user.name,
+            username: user.username,
+            action: 'password_changed',
+            description: 'Password changed successfully',
+            ip: req.ip,
+            userAgent: req.get('User-Agent'),
+            deviceId: req.deviceId,
+            status: 'success',
+            severity: 'medium'
+        });
+
+        res.json({
+            success: true,
+            message: 'Password changed successfully'
+        });
+    } catch (error) {
+        console.error('Change password error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Password change failed'
+        });
+    }
 };
 
 module.exports = {
     userLogin,
     subAdminLogin,
-    mainAdminLogin
+    mainAdminLogin,
+    logout,
+    logoutAllDevices,
+    refreshToken,
+    getProfile,
+    verifySession,
+    changePassword
 };
