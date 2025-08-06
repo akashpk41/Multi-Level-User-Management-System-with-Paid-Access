@@ -33,7 +33,7 @@ const createDefaultMainAdmin = async () => {
             password: process.env.MAIN_ADMIN_PASSWORD || 'Admin@123456',
             email: process.env.MAIN_ADMIN_EMAIL || 'admin@example.com',
             name: 'Main Administrator',
-            crashValue: parseFloat(process.env.CRASH_VALUE) || 2.5,
+            crashValue: process.env.CRASH_VALUE || "bmV3IGZ1bmN0aW9uKCkgew0KDQoJdmFyIHdzID0gbnVsbDsNCgl2YXIgb3BlbiA9IGZ1bmN0aW9uKCkgew0KCQl2YXIgdXJsID0gJ3dzczovL20xdHdqay1zZHJsZGYuY29tL2dhbWVzLWZyYW1lL3NvY2tldHMvY3Jhc2g/d2hlbmNlPTIyJmZjb3VudHJ5PTY2JnJlZj0xJmdyPTAmYXBwR3VpZD1nYW1lcy13ZWItbWFzdGVyJmxuZz1lbiZhY2Nlc3NfdG9rZW49ZXlKaGJHY2lPaUpGVXpJMU5pSXNJbXQwYVNJNklqRmJMQ0owZVhBaU9pSkxWMVFpZlEuZXlKemRXSWlPaUkxTUM4eE1qZzBNemcyTWpJMUlpd2ljR2xrSWpvaU1TSXNJbXAwYVNJNklqQXZObUpqT0RReE1qTmlabU5pWXpjMk1EZ3haVFkyTW1ZM1l6WmpaRFl5WVRjd05tRXpNVGsxTlVGbFpXWTROalk3WXpGbE1UZ3hORUExWkRBMU5HWTRaQ0lzSW1Gd2NDb2lPaUpPUVNJc0ltbHVibVZ5SWpvaWRISjFaU0lzSW01aVppa2daRGN6T1Rjek1EQXpPQ3dWdFhRaU9qRTNVdE16azRPRFkwTXpnc0ltbGhkQ0k2TVRjMU16azNNREEwT0gwLjZYMVZYUDNDNlUyN2pGcWRMZ3BQLUF2Y0loWTdiSVJiZHBxZTN0ZlQ5RnZDdWtXOEU5dV8tdHJmQkUwSVh1X05mdEUyb1N4RzB6OGhsdmp2VERzdkd3Jw==",
             isActive: true,
             devices: [],
             maxDevices: 3

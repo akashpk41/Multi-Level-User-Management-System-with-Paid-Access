@@ -347,32 +347,24 @@ const updateCrashValue = async (req, res) => {
         const { crashValue } = req.body;
         const mainAdmin = req.user;
 
-        if (!crashValue || typeof crashValue !== 'number') {
+        if (!crashValue || typeof crashValue !== 'string') {
             return res.status(400).json({
                 success: false,
-                message: 'Valid crash value is required'
+                message: 'Valid crash value string is required'
             });
         }
 
-        if (crashValue < 1.0 || crashValue > 10.0) {
+        if (crashValue.trim().length === 0) {
             return res.status(400).json({
                 success: false,
-                message: 'Crash value must be between 1.0 and 10.0'
+                message: 'Crash value cannot be empty'
             });
         }
 
         const oldCrashValue = mainAdmin.crashValue;
 
         // Update crash value
-        const success = mainAdmin.updateCrashValue(crashValue);
-
-        if (!success) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid crash value range'
-            });
-        }
-
+        mainAdmin.crashValue = crashValue.trim();
         await mainAdmin.save();
 
         // Log crash value update
@@ -382,10 +374,11 @@ const updateCrashValue = async (req, res) => {
             adminName: mainAdmin.name,
             adminUsername: mainAdmin.username,
             action: 'crash_value_updated',
-            description: `Updated crash value from ${oldCrashValue} to ${crashValue}`,
+            description: `Updated crash value script`,
             metadata: {
-                oldValue: oldCrashValue,
-                newValue: crashValue
+                oldValueLength: oldCrashValue ? oldCrashValue.length : 0,
+                newValueLength: crashValue.length,
+                timestamp: new Date()
             },
             ip: req.ip,
             userAgent: req.get('User-Agent')
@@ -394,8 +387,11 @@ const updateCrashValue = async (req, res) => {
         res.json({
             success: true,
             message: 'Crash value updated successfully',
-            crashValue: mainAdmin.crashValue,
-            oldValue: oldCrashValue
+            crashValue: {
+                length: mainAdmin.crashValue.length,
+                preview: mainAdmin.crashValue.substring(0, 50) + '...',
+                updated: true
+            }
         });
     } catch (error) {
         console.error('Update crash value error:', error);
