@@ -59,9 +59,11 @@ const createUser = async (req, res) => {
             name: name.trim(),
             code: userCode.toUpperCase(),
             subAdmin: subAdminId,
-            package: packageType,
-            packageExpiry: getPackageExpiry(packageType)
+            package: packageType
         });
+
+        // Set package expiry
+        user.setPackageExpiry();
 
         await user.save();
 

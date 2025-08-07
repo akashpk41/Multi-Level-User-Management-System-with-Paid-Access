@@ -24,25 +24,24 @@ const subAdminSchema = new mongoose.Schema({
         trim: true,
         maxLength: [50, 'Name cannot exceed 50 characters']
     },
-    email: {
+    // Package System
+    package: {
         type: String,
-        trim: true,
-        lowercase: true,
-        match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+        enum: ['7d', '15d', '30d'],
+        required: [true, 'Package type is required']
     },
-    phone: {
-        type: String,
-        trim: true,
-        match: [/^[0-9]{10,15}$/, 'Please enter a valid phone number']
+    packagePrice: {
+        type: Number,
+        required: [true, 'Package price is required'],
+        min: [0, 'Package price cannot be negative']
     },
-    // Payment and Access Control
+    packageExpiry: {
+        type: Date,
+        required: [true, 'Package expiry is required']
+    },
     isPaid: {
         type: Boolean,
         default: false
-    },
-    paymentExpiry: {
-        type: Date,
-        default: null
     },
     isActive: {
         type: Boolean,
@@ -74,6 +73,31 @@ const subAdminSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    // Sales Tracking
+    totalSales: {
+        type: Number,
+        default: 0,
+        min: [0, 'Total sales cannot be negative']
+    },
+    salesHistory: [{
+        amount: {
+            type: Number,
+            required: true
+        },
+        package: {
+            type: String,
+            enum: ['7d', '15d', '30d'],
+            required: true
+        },
+        date: {
+            type: Date,
+            default: Date.now
+        },
+        note: {
+            type: String,
+            default: ''
+        }
+    }],
     // Auto logout tracking
     isAutoLoggedOut: {
         type: Boolean,
@@ -103,18 +127,18 @@ const subAdminSchema = new mongoose.Schema({
     toObject: { virtuals: true }
 });
 
-// Virtual for checking if payment is expired
-subAdminSchema.virtual('isPaymentExpired').get(function() {
-    if (!this.paymentExpiry) return true;
-    return moment().isAfter(this.paymentExpiry);
+// Virtual for checking if package is expired
+subAdminSchema.virtual('isPackageExpired').get(function() {
+    if (!this.packageExpiry) return true;
+    return moment().isAfter(this.packageExpiry);
 });
 
-// Virtual for remaining payment time
-subAdminSchema.virtual('remainingPaymentTime').get(function() {
-    if (!this.paymentExpiry || this.isPaymentExpired) return null;
+// Virtual for remaining package time
+subAdminSchema.virtual('remainingPackageTime').get(function() {
+    if (!this.packageExpiry || this.isPackageExpired) return null;
 
     const now = moment();
-    const expiry = moment(this.paymentExpiry);
+    const expiry = moment(this.packageExpiry);
     const duration = moment.duration(expiry.diff(now));
 
     return {
@@ -127,7 +151,7 @@ subAdminSchema.virtual('remainingPaymentTime').get(function() {
 
 // Virtual to check if can access system
 subAdminSchema.virtual('canAccess').get(function() {
-    return this.isActive && this.isPaid && !this.isPaymentExpired;
+    return this.isActive && this.isPaid && !this.isPackageExpired;
 });
 
 // Password hashing before save
@@ -148,18 +172,54 @@ subAdminSchema.methods.comparePassword = async function(candidatePassword) {
     return await bcrypt.compare(candidatePassword, this.password);
 };
 
-// Method to set payment expiry
-subAdminSchema.methods.setPaymentExpiry = function(days = 30) {
-    this.paymentExpiry = moment().add(days, 'days').toDate();
+// Method to set package expiry and price
+subAdminSchema.methods.setPackage = function(packageType, customPrice = null) {
+    const now = moment();
+
+    // Default prices
+    const prices = {
+        '7d': 2500,
+        '15d': 4500,
+        '30d': 8000
+    };
+
+    this.package = packageType;
+    this.packagePrice = customPrice || prices[packageType];
+
+    switch(packageType) {
+        case '7d':
+            this.packageExpiry = now.add(7, 'days').toDate();
+            break;
+        case '15d':
+            this.packageExpiry = now.add(15, 'days').toDate();
+            break;
+        case '30d':
+            this.packageExpiry = now.add(30, 'days').toDate();
+            break;
+        default:
+            this.packageExpiry = now.add(7, 'days').toDate();
+    }
+
     this.isPaid = true;
     this.isActive = true;
+
+    // Add to sales history
+    this.salesHistory.push({
+        amount: this.packagePrice,
+        package: packageType,
+        date: new Date(),
+        note: `Package activated: ${packageType}`
+    });
+
+    // Update total sales
+    this.totalSales += this.packagePrice;
 };
 
 // Method to check and auto logout if expired
 subAdminSchema.methods.checkAndAutoLogout = async function() {
-    if ((this.isPaymentExpired || !this.isActive) && this.refreshToken) {
+    if ((this.isPackageExpired || !this.isActive) && this.refreshToken) {
         this.isAutoLoggedOut = true;
-        this.autoLogoutReason = this.isPaymentExpired ? 'payment_expired' : 'main_admin_action';
+        this.autoLogoutReason = this.isPackageExpired ? 'expired' : 'main_admin_action';
         this.refreshToken = null;
         this.deviceId = null;
 
@@ -186,15 +246,54 @@ subAdminSchema.statics.findActive = function() {
     return this.find({
         isActive: true,
         isPaid: true,
-        paymentExpiry: { $gt: new Date() }
+        packageExpiry: { $gt: new Date() }
     });
+};
+
+// Static method to get package prices
+subAdminSchema.statics.getPackagePrices = function() {
+    return {
+        '7d': 2500,
+        '15d': 4500,
+        '30d': 8000
+    };
+};
+
+// Static method to get total sales
+subAdminSchema.statics.getTotalSales = async function() {
+    const result = await this.aggregate([
+        {
+            $group: {
+                _id: null,
+                totalSales: { $sum: '$totalSales' },
+                totalSubAdmins: { $sum: 1 },
+                activeSubAdmins: {
+                    $sum: {
+                        $cond: [
+                            {
+                                $and: [
+                                    { $eq: ['$isActive', true] },
+                                    { $eq: ['$isPaid', true] },
+                                    { $gt: ['$packageExpiry', new Date()] }
+                                ]
+                            },
+                            1,
+                            0
+                        ]
+                    }
+                }
+            }
+        }
+    ]);
+
+    return result[0] || { totalSales: 0, totalSubAdmins: 0, activeSubAdmins: 0 };
 };
 
 // Index for better performance
 subAdminSchema.index({ username: 1 });
 subAdminSchema.index({ isActive: 1 });
 subAdminSchema.index({ isPaid: 1 });
-subAdminSchema.index({ paymentExpiry: 1 });
+subAdminSchema.index({ packageExpiry: 1 });
 subAdminSchema.index({ deviceId: 1 });
 subAdminSchema.index({ createdBy: 1 });
 

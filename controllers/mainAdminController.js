@@ -1,4 +1,265 @@
-const { MainAdmin, SubAdmin, User, ActivityLog } = require('../models');
+// Update package prices (MainAdmin only)
+const updatePackagePrices = async (req, res) => {
+    try {
+        const { prices } = req.body; // { "7d": 2500, "15d": 4500, "30d": 8000 }
+        const mainAdmin = req.user;
+
+        if (!prices || typeof prices !== 'object') {
+            return res.status(400).json({
+                success: false,
+                message: 'Package prices object is required'
+            });
+        }
+
+        const validPackages = ['7d', '15d', '30d'];
+
+        // Get old prices for logging
+        const oldPrices = { ...mainAdmin.packagePrices } || {
+            '7d': 2500,
+            '15d': 4500,
+            '30d': 8000
+        };
+
+        // Initialize packagePrices if not exists
+        if (!mainAdmin.packagePrices) {
+            mainAdmin.packagePrices = {
+                '7d': 2500,
+                '15d': 4500,
+                '30d': 8000
+            };
+        }
+
+        // Validate and update prices
+        for (const [packageType, price] of Object.entries(prices)) {
+            if (!validPackages.includes(packageType)) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Invalid package type: ${packageType}. Must be 7d, 15d, or 30d`
+                });
+            }
+
+            if (typeof price !== 'number' || price < 100 || price > 50000) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Invalid price for ${packageType}. Must be between 100 and 50000`
+                });
+            }
+
+            mainAdmin.packagePrices[packageType] = price;
+        }
+
+        // Mark as modified and save
+        mainAdmin.markModified('packagePrices');
+        await mainAdmin.save();
+
+        // Log price update
+        await ActivityLog.logUserManagement({
+            adminId: mainAdmin._id,
+            adminModel: 'MainAdmin',
+            adminName: mainAdmin.name,
+            adminUsername: mainAdmin.username,
+            action: 'package_prices_updated',
+            description: 'Updated package pricing',
+            metadata: {
+                oldPrices,
+                newPrices: mainAdmin.packagePrices,
+                updatedPackages: Object.keys(prices)
+            },
+            ip: req.ip,
+            userAgent: req.get('User-Agent')
+        });
+
+        res.json({
+            success: true,
+            message: 'Package prices updated successfully',
+            packagePrices: mainAdmin.packagePrices
+        });
+    } catch (error) {
+        console.error('Update package prices error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update package prices'
+        });
+    }
+};
+
+// Get sales analytics (MainAdmin only)
+const getSalesAnalytics = async (req, res) => {
+    try {
+        const { period = '30d', startDate, endDate } = req.query;
+
+        let dateFilter = {};
+        const now = new Date();
+
+        // Set date range based on period or custom dates
+        if (startDate && endDate) {
+            dateFilter = {
+                $gte: new Date(startDate),
+                $lte: new Date(endDate)
+            };
+        } else {
+            switch (period) {
+                case '7d':
+                    dateFilter.$gte = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+                    break;
+                case '30d':
+                    dateFilter.$gte = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+                    break;
+                case '90d':
+                    dateFilter.$gte = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+                    break;
+                default:
+                    dateFilter.$gte = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            }
+        }
+
+        // Aggregate sales data
+        const salesAnalytics = await SubAdmin.aggregate([
+            {
+                $unwind: '$salesHistory'
+            },
+            {
+                $match: {
+                    'salesHistory.date': dateFilter
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        year: { $year: '$salesHistory.date' },
+                        month: { $month: '$salesHistory.date' },
+                        day: { $dayOfMonth: '$salesHistory.date' },
+                        package: '$salesHistory.package'
+                    },
+                    totalAmount: { $sum: '$salesHistory.amount' },
+                    count: { $sum: 1 }
+                }
+            },
+            {
+                $sort: { '_id.year': 1, '_id.month': 1, '_id.day': 1 }
+            }
+        ]);
+
+        // Top performing sub-admins
+        const topSubAdmins = await SubAdmin.aggregate([
+            {
+                $match: {
+                    totalSales: { $gt: 0 }
+                }
+            },
+            {
+                $project: {
+                    username: 1,
+                    name: 1,
+                    totalSales: 1,
+                    package: 1,
+                    packagePrice: 1,
+                    isActive: 1,
+                    totalUsersAdded: 1
+                }
+            },
+            {
+                $sort: { totalSales: -1 }
+            },
+            {
+                $limit: 10
+            }
+        ]);
+
+        // Package-wise sales summary
+        const packageSummary = await SubAdmin.aggregate([
+            {
+                $unwind: '$salesHistory'
+            },
+            {
+                $match: {
+                    'salesHistory.date': dateFilter
+                }
+            },
+            {
+                $group: {
+                    _id: '$salesHistory.package',
+                    totalAmount: { $sum: '$salesHistory.amount' },
+                    count: { $sum: 1 },
+                    avgAmount: { $avg: '$salesHistory.amount' }
+                }
+            }
+        ]);
+
+        // Overall totals
+        const totalSales = await SubAdmin.aggregate([
+            {
+                $group: {
+                    _id: null,
+                    totalRevenue: { $sum: '$totalSales' },
+                    totalSubAdmins: { $sum: 1 },
+                    activeSubAdmins: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        { $eq: ['$isActive', true] },
+                                        { $eq: ['$isPaid', true] },
+                                        { $gt: ['$packageExpiry', new Date()] }
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
+                        }
+                    }
+                }
+            }
+        ]);
+
+        res.json({
+            success: true,
+            analytics: {
+                period,
+                dateRange: { startDate: dateFilter.$gte, endDate: dateFilter.$lte || now },
+                salesByDay: salesAnalytics,
+                topSubAdmins,
+                packageSummary,
+                totals: totalSales[0] || { totalRevenue: 0, totalSubAdmins: 0, activeSubAdmins: 0 }
+            }
+        });
+    } catch (error) {
+        console.error('Get sales analytics error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch sales analytics'
+        });
+    }
+};
+
+// Get package prices (MainAdmin only)
+const getPackagePrices = async (req, res) => {
+    try {
+        const mainAdmin = req.user;
+
+        // Ensure packagePrices exists
+        if (!mainAdmin.packagePrices) {
+            mainAdmin.packagePrices = {
+                '7d': 2500,
+                '15d': 4500,
+                '30d': 8000
+            };
+            await mainAdmin.save();
+        }
+
+        res.json({
+            success: true,
+            packagePrices: mainAdmin.packagePrices,
+            lastUpdated: mainAdmin.updatedAt
+        });
+    } catch (error) {
+        console.error('Get package prices error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch package prices'
+        });
+    }
+};const { MainAdmin, SubAdmin, User, ActivityLog } = require('../models');
 const { getRemainingTime, formatDate, getStartOfDay, getEndOfDay, getStartOfWeek, getEndOfWeek, getStartOfMonth, getEndOfMonth } = require('../utils/dateUtil');
 
 // Get MainAdmin dashboard with system overview
@@ -9,23 +270,22 @@ const getMainAdminDashboard = async (req, res) => {
         // Update stats before showing dashboard
         await mainAdmin.updateStats();
 
-        // Get system-wide statistics
-        const systemStats = await Promise.all([
-            // Total counts
-            SubAdmin.countDocuments(),
-            User.countDocuments(),
+        // Get system-wide statistics with sales data
+        const [systemStats, salesData] = await Promise.all([
+            // Basic counts
+            Promise.all([
+                SubAdmin.countDocuments(),
+                User.countDocuments(),
+                SubAdmin.countDocuments({ isActive: true, isPaid: true, packageExpiry: { $gt: new Date() } }),
+                User.countDocuments({ isActive: true, packageExpiry: { $gt: new Date() } }),
+                SubAdmin.countDocuments({ packageExpiry: { $lte: new Date() } }),
+                User.countDocuments({ packageExpiry: { $lte: new Date() } }),
+                SubAdmin.countDocuments({ createdAt: { $gte: getStartOfDay(), $lte: getEndOfDay() } }),
+                User.countDocuments({ createdAt: { $gte: getStartOfDay(), $lte: getEndOfDay() } })
+            ]),
 
-            // Active counts
-            SubAdmin.countDocuments({ isActive: true, isPaid: true, paymentExpiry: { $gt: new Date() } }),
-            User.countDocuments({ isActive: true, packageExpiry: { $gt: new Date() } }),
-
-            // Expired counts
-            SubAdmin.countDocuments({ paymentExpiry: { $lte: new Date() } }),
-            User.countDocuments({ packageExpiry: { $lte: new Date() } }),
-
-            // Today's registrations
-            SubAdmin.countDocuments({ createdAt: { $gte: getStartOfDay(), $lte: getEndOfDay() } }),
-            User.countDocuments({ createdAt: { $gte: getStartOfDay(), $lte: getEndOfDay() } })
+            // Sales data
+            SubAdmin.getTotalSales()
         ]);
 
         // Package distribution
@@ -110,16 +370,21 @@ const getMainAdminDashboard = async (req, res) => {
             },
             systemStats: {
                 subAdmins: {
-                    total: systemStats[0],
-                    active: systemStats[2],
-                    expired: systemStats[4],
-                    todayRegistrations: systemStats[6]
+                    total: systemStats[0][0],
+                    active: systemStats[0][2],
+                    expired: systemStats[0][4],
+                    todayRegistrations: systemStats[0][6]
                 },
                 users: {
-                    total: systemStats[1],
-                    active: systemStats[3],
-                    expired: systemStats[5],
-                    todayRegistrations: systemStats[7]
+                    total: systemStats[0][1],
+                    active: systemStats[0][3],
+                    expired: systemStats[0][5],
+                    todayRegistrations: systemStats[0][7]
+                },
+                sales: {
+                    totalSales: salesData.totalSales,
+                    totalSubAdmins: salesData.totalSubAdmins,
+                    activeSubAdmins: salesData.activeSubAdmins
                 }
             },
             packageStats: packageStats,
@@ -768,5 +1033,8 @@ module.exports = {
     getSystemLogs,
     getSecurityEvents,
     getSystemHealth,
-    forceLogoutUser
+    forceLogoutUser,
+    updatePackagePrices,
+    getSalesAnalytics,
+    getPackagePrices
 };

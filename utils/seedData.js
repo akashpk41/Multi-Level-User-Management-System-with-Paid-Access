@@ -69,14 +69,16 @@ const createSampleSubAdmin = async (mainAdminId) => {
             username: 'testsubadmin',
             password: 'SubAdmin@123',
             name: 'Test Sub Admin',
-            email: 'subadmin@test.com',
-            phone: '01700000000',
             createdBy: mainAdminId,
+            package: '7d',
+            packagePrice: 2500,
+            packageExpiry: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
             isActive: true,
             isPaid: true,
-            paymentExpiry: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
             totalUsersAdded: 0,
-            activeUsers: 0
+            activeUsers: 0,
+            totalSales: 0,
+            salesHistory: []
         });
 
         await sampleSubAdmin.save();
@@ -84,7 +86,7 @@ const createSampleSubAdmin = async (mainAdminId) => {
         console.log('📋 Sub-admin credentials:');
         console.log('   Username:', sampleSubAdmin.username);
         console.log('   Password: SubAdmin@123');
-        console.log('   Email:', sampleSubAdmin.email);
+        console.log('   Package:', sampleSubAdmin.package, '- ৳', sampleSubAdmin.packagePrice);
 
         return sampleSubAdmin;
     } catch (error) {

@@ -1,4 +1,76 @@
-const { SubAdmin, User, MainAdmin, ActivityLog } = require('../models');
+// Get SubAdmin sales history (SubAdmin only)
+const getSalesHistory = async (req, res) => {
+    try {
+        const subAdmin = req.user; // Current logged-in sub-admin
+        const { page = 1, limit = 10, startDate, endDate } = req.query;
+
+        // Build filter for sales history
+        let salesFilter = {};
+        if (startDate || endDate) {
+            salesFilter.date = {};
+            if (startDate) salesFilter.date.$gte = new Date(startDate);
+            if (endDate) salesFilter.date.$lte = new Date(endDate);
+        }
+
+        // Get sales history with pagination
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        let filteredSales = subAdmin.salesHistory;
+        if (Object.keys(salesFilter).length > 0) {
+            filteredSales = subAdmin.salesHistory.filter(sale => {
+                if (salesFilter.date) {
+                    const saleDate = new Date(sale.date);
+                    if (salesFilter.date.$gte && saleDate < salesFilter.date.$gte) return false;
+                    if (salesFilter.date.$lte && saleDate > salesFilter.date.$lte) return false;
+                }
+                return true;
+            });
+        }
+
+        const totalSales = filteredSales.length;
+        const paginatedSales = filteredSales
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .slice(skip, skip + parseInt(limit));
+
+        // Calculate summary
+        const summary = {
+            totalAmount: filteredSales.reduce((sum, sale) => sum + sale.amount, 0),
+            totalTransactions: totalSales,
+            packageBreakdown: {}
+        };
+
+        // Package breakdown
+        filteredSales.forEach(sale => {
+            if (!summary.packageBreakdown[sale.package]) {
+                summary.packageBreakdown[sale.package] = {
+                    count: 0,
+                    amount: 0
+                };
+            }
+            summary.packageBreakdown[sale.package].count++;
+            summary.packageBreakdown[sale.package].amount += sale.amount;
+        });
+
+        res.json({
+            success: true,
+            salesHistory: paginatedSales,
+            summary: summary,
+            pagination: {
+                currentPage: parseInt(page),
+                totalPages: Math.ceil(totalSales / parseInt(limit)),
+                totalCount: totalSales,
+                hasNext: skip + paginatedSales.length < totalSales,
+                hasPrev: parseInt(page) > 1
+            }
+        });
+    } catch (error) {
+        console.error('Get sales history error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch sales history'
+        });
+    }
+};const { SubAdmin, User, MainAdmin, ActivityLog } = require('../models');
 const { generateTempPassword } = require('../utils/generateTokens');
 const { getPaymentExpiry, getRemainingTime, formatDate } = require('../utils/dateUtil');
 
@@ -395,11 +467,11 @@ const getSubAdminById = async (req, res) => {
     }
 };
 
-// Update SubAdmin payment (MainAdmin only)
-const updateSubAdminPayment = async (req, res) => {
+// Update SubAdmin package (MainAdmin only)
+const updateSubAdminPackage = async (req, res) => {
     try {
         const { subAdminId } = req.params;
-        const { days = 30, activate = true } = req.body;
+        const { package: packageType, customPrice } = req.body;
         const subAdmin = req.targetSubAdmin; // Set by canManageSubAdmin middleware
 
         if (!subAdmin) {
@@ -409,25 +481,31 @@ const updateSubAdminPayment = async (req, res) => {
             });
         }
 
-        if (days < 1 || days > 365) {
+        if (!['7d', '15d', '30d'].includes(packageType)) {
             return res.status(400).json({
                 success: false,
-                message: 'Payment days must be between 1 and 365'
+                message: 'Invalid package type. Must be 7d, 15d, or 30d'
             });
         }
 
-        const oldPaymentExpiry = subAdmin.paymentExpiry;
-        const oldStatus = { isActive: subAdmin.isActive, isPaid: subAdmin.isPaid };
-
-        // Update payment
-        subAdmin.setPaymentExpiry(days);
-        if (activate) {
-            subAdmin.isActive = true;
+        if (customPrice && (customPrice < 100 || customPrice > 50000)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Custom price must be between 100 and 50000'
+            });
         }
 
+        const oldPackage = {
+            type: subAdmin.package,
+            price: subAdmin.packagePrice,
+            expiry: subAdmin.packageExpiry
+        };
+
+        // Set new package
+        subAdmin.setPackage(packageType, customPrice);
         await subAdmin.save();
 
-        // Log payment update
+        // Log package update
         await ActivityLog.logUserManagement({
             adminId: req.user._id,
             adminModel: 'MainAdmin',
@@ -437,14 +515,15 @@ const updateSubAdminPayment = async (req, res) => {
             targetModel: 'SubAdmin',
             targetName: subAdmin.name,
             targetIdentifier: subAdmin.username,
-            action: 'payment_updated',
-            description: `Updated payment for ${days} days${activate ? ' and activated account' : ''}`,
+            action: 'package_updated',
+            description: `Updated package from ${oldPackage.type} (৳${oldPackage.price}) to ${packageType} (৳${subAdmin.packagePrice})`,
             metadata: {
-                oldPaymentExpiry,
-                newPaymentExpiry: subAdmin.paymentExpiry,
-                days,
-                activated: activate,
-                oldStatus
+                oldPackage,
+                newPackage: {
+                    type: packageType,
+                    price: subAdmin.packagePrice,
+                    expiry: subAdmin.packageExpiry
+                }
             },
             ip: req.ip,
             userAgent: req.get('User-Agent')
@@ -452,23 +531,26 @@ const updateSubAdminPayment = async (req, res) => {
 
         res.json({
             success: true,
-            message: 'Payment updated successfully',
+            message: 'Sub-admin package updated successfully',
             subAdmin: {
                 id: subAdmin._id,
                 username: subAdmin.username,
                 name: subAdmin.name,
+                package: subAdmin.package,
+                packagePrice: subAdmin.packagePrice,
+                packageExpiry: subAdmin.packageExpiry,
+                remainingPackageTime: subAdmin.remainingPackageTime,
                 isActive: subAdmin.isActive,
                 isPaid: subAdmin.isPaid,
-                paymentExpiry: subAdmin.paymentExpiry,
-                remainingPaymentTime: getRemainingTime(subAdmin.paymentExpiry),
-                canAccess: subAdmin.canAccess
+                canAccess: subAdmin.canAccess,
+                totalSales: subAdmin.totalSales
             }
         });
     } catch (error) {
-        console.error('Update sub-admin payment error:', error);
+        console.error('Update sub-admin package error:', error);
         res.status(500).json({
             success: false,
-            message: 'Failed to update payment'
+            message: 'Failed to update package'
         });
     }
 };
@@ -814,9 +896,10 @@ module.exports = {
     createSubAdmin,
     getAllSubAdmins,
     getSubAdminById,
-    updateSubAdminPayment,
+    updateSubAdminPackage,
     toggleSubAdminStatus,
     deleteSubAdmin,
     getSubAdminDashboard,
-    resetSubAdminPassword
+    resetSubAdminPassword,
+    getSalesHistory
 };

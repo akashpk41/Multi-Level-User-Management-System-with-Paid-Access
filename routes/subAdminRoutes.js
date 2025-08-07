@@ -21,6 +21,13 @@ router.get('/dashboard',
     subAdminController.getSubAdminDashboard
 );
 
+// Get sales history (SubAdmin only)
+router.get('/sales-history',
+    limiters.generalLimiter,
+    subAdminAuth,
+    subAdminController.getSalesHistory
+);
+
 // Routes for MainAdmin (sub-admin management)
 
 // Create new sub-admin (MainAdmin only)
@@ -45,12 +52,12 @@ router.get('/:subAdminId',
     subAdminController.getSubAdminById
 );
 
-// Update sub-admin payment (MainAdmin only)
-router.put('/:subAdminId/payment',
+// Update sub-admin package (MainAdmin only)
+router.put('/:subAdminId/package',
     limiters.generalLimiter,
     mainAdminAuth,
     role.canManageSubAdmin,
-    subAdminController.updateSubAdminPayment
+    subAdminController.updateSubAdminPackage
 );
 
 // Activate/Deactivate sub-admin (MainAdmin only)

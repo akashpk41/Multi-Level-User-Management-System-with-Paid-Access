@@ -133,13 +133,23 @@ const verifyDevice = async (req, res, next) => {
 
         if (userRole === 'mainadmin') {
             // Main admin can have multiple devices
-            isValidDevice = user.devices.some(device =>
-                device.deviceId === currentDeviceId &&
-                device.refreshToken // Has active session
-            );
+            if (!user.devices || user.devices.length === 0) {
+                // No devices registered yet, allow access
+                isValidDevice = true;
+            } else {
+                isValidDevice = user.devices.some(device =>
+                    device.deviceId === currentDeviceId &&
+                    device.refreshToken // Has active session
+                );
+            }
         } else {
             // User and SubAdmin can only have one device
-            isValidDevice = user.deviceId === currentDeviceId;
+            if (!user.deviceId) {
+                // No device registered yet, allow access
+                isValidDevice = true;
+            } else {
+                isValidDevice = user.deviceId === currentDeviceId;
+            }
         }
 
         if (!isValidDevice) {
@@ -166,7 +176,7 @@ const verifyDevice = async (req, res, next) => {
         }
 
         // Update last activity for main admin devices
-        if (userRole === 'mainadmin') {
+        if (userRole === 'mainadmin' && user.devices) {
             const deviceIndex = user.devices.findIndex(d => d.deviceId === currentDeviceId);
             if (deviceIndex !== -1) {
                 user.devices[deviceIndex].lastActive = new Date();

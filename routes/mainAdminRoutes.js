@@ -49,6 +49,29 @@ router.post('/force-logout',
     mainAdminController.forceLogoutUser
 );
 
+// Package Management Routes (MainAdmin only)
+
+// Get current package prices
+router.get('/package-prices',
+    limiters.generalLimiter,
+    mainAdminAuth,
+    mainAdminController.getPackagePrices
+);
+
+// Update package prices
+router.put('/package-prices',
+    limiters.generalLimiter,
+    mainAdminAuth,
+    mainAdminController.updatePackagePrices
+);
+
+// Get sales analytics
+router.get('/sales-analytics',
+    limiters.dashboardLimiter,
+    mainAdminAuth,
+    mainAdminController.getSalesAnalytics
+);
+
 // Monitoring & Logs Routes (MainAdmin only)
 
 // Get system logs with filters
